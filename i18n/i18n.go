@@ -67,6 +67,15 @@ func (t Translator) initFuncs(bndl *bundle.Bundle) {
 	for _, lang := range bndl.LanguageTags() {
 		currentLang := lang
 
+		//Fixes lowercasing of language tags from nicksnyder/go-i18n
+		for k, v := range t.cfg.GetStringMap("Languages") {
+			l, _ := v.(map[string]interface{})
+			langTag := l["languagetag"].(string)
+			if currentLang == k {
+				currentLang = langTag
+			}
+		}
+
 		t.translateFuncs[currentLang] = func(translationID string, args ...interface{}) string {
 			tFunc, err := bndl.Tfunc(currentLang)
 			if err != nil {

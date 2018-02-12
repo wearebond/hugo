@@ -191,12 +191,20 @@ func (sp *SourceSpec) NewFileInfo(baseDir, filename string, isLeafBundle bool, f
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	baseName := helpers.Filename(name)
 
-	if translationBaseName == "" {
-		// This is usyally provided by the filesystem. But this FileInfo is also
-		// created in a standalone context when doing "hugo new". This is
-		// an approximate implementation, which is "good enough" in that case.
-		fileLangExt := filepath.Ext(baseName)
-		translationBaseName = strings.TrimSuffix(baseName, fileLangExt)
+	lang := strings.TrimPrefix(filepath.Ext(baseName), ".")
+	var translationBaseName string
+
+	translationBaseName = baseName
+	lang = sp.DefaultContentLanguage
+
+	for _, v := range sp.Languages {
+		l, _ := v.(map[string]interface{})
+		baseLang := strings.TrimPrefix(filepath.Ext(baseName), ".")
+		langTag := l["languagetag"].(string)
+		if baseLang == langTag {
+			lang = langTag
+			translationBaseName = helpers.Filename(baseName)
+		}
 	}
 
 	f := &FileInfo{
