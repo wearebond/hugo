@@ -102,6 +102,9 @@ func toSortedLanguages(cfg config.Provider, l map[string]interface{}) (helpers.L
 		}
 
 		language := helpers.NewLanguage(lang, cfg)
+		if val, ok := langsMap["languagetag"]; ok {
+			language = helpers.NewLanguage(cast.ToString(val), cfg)
+		}
 
 		for loki, v := range langsMap {
 			switch loki {
