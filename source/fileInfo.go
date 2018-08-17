@@ -191,8 +191,7 @@ func (sp *SourceSpec) NewFileInfo(baseDir, filename string, isLeafBundle bool, f
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	baseName := helpers.Filename(name)
 
-	lang := strings.TrimPrefix(filepath.Ext(baseName), ".")
-	var translationBaseName string
+	lang = strings.TrimPrefix(filepath.Ext(baseName), ".")
 
 	translationBaseName = baseName
 	lang = sp.DefaultContentLanguage
