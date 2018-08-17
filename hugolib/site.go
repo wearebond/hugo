@@ -1756,7 +1756,7 @@ func (s *Site) renderForLayouts(name string, d interface{}, w io.Writer, layouts
 		// Behavior here should be dependent on if running in server or watch mode.
 		if p, ok := d.(*PageOutput); ok {
 			if p.File != nil {
-				s.DistinctErrorLog.Printf("Error while rendering %q in %q: %s", name, p.File.Dir(), err)
+				s.DistinctErrorLog.Printf("Error while rendering %q in %q: %s (%s)", name, p.File.Dir(), err, d)
 			} else {
 				s.DistinctErrorLog.Printf("Error while rendering %q: %s", name, err)
 			}
