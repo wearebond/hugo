@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/magefile/mage/mg"
@@ -32,16 +33,10 @@ func init() {
 	if exe := os.Getenv("GOEXE"); exe != "" {
 		goexe = exe
 	}
-}
 
-func getDep() error {
-	return sh.Run(goexe, "get", "-u", "github.com/golang/dep/cmd/dep")
-}
-
-// Install Go Dep and sync Hugo's vendored dependencies
-func Vendor() error {
-	mg.Deps(getDep)
-	return sh.Run("dep", "ensure")
+	// We want to use Go 1.11 modules even if the source lives inside GOPATH.
+	// The default is "auto".
+	os.Setenv("GO111MODULE", "on")
 }
 
 // Build hugo binary
@@ -104,7 +99,11 @@ func Check() {
 		fmt.Printf("Skip Check on %s\n", runtime.Version())
 		return
 	}
-	mg.Deps(Test386, Fmt, Vet)
+
+	mg.Deps(Test386)
+
+	mg.Deps(Fmt, Vet)
+
 	// don't run two tests in parallel, they saturate the CPUs anyway, and running two
 	// causes memory issues in CI.
 	mg.Deps(TestRace)
@@ -167,19 +166,26 @@ func Fmt() error {
 	return nil
 }
 
-var pkgPrefixLen = len("github.com/gohugoio/hugo")
+var (
+	pkgPrefixLen = len("github.com/gohugoio/hugo")
+	pkgs         []string
+	pkgsInit     sync.Once
+)
 
 func hugoPackages() ([]string, error) {
-	mg.Deps(getDep)
-	s, err := sh.Output(goexe, "list", "./...")
-	if err != nil {
-		return nil, err
-	}
-	pkgs := strings.Split(s, "\n")
-	for i := range pkgs {
-		pkgs[i] = "." + pkgs[i][pkgPrefixLen:]
-	}
-	return pkgs, nil
+	var err error
+	pkgsInit.Do(func() {
+		var s string
+		s, err = sh.Output(goexe, "list", "./...")
+		if err != nil {
+			return
+		}
+		pkgs = strings.Split(s, "\n")
+		for i := range pkgs {
+			pkgs[i] = "." + pkgs[i][pkgPrefixLen:]
+		}
+	})
+	return pkgs, err
 }
 
 // Run golint linter
@@ -205,16 +211,14 @@ func Lint() error {
 
 //  Run go vet linter
 func Vet() error {
-	mg.Deps(getDep)
 	if err := sh.Run(goexe, "vet", "./..."); err != nil {
-		return fmt.Errorf("error running govendor: %v", err)
+		return fmt.Errorf("error running go vet: %v", err)
 	}
 	return nil
 }
 
 // Generate test coverage report
 func TestCoverHTML() error {
-	mg.Deps(getDep)
 	const (
 		coverAll = "coverage-all.out"
 		cover    = "coverage.out"
@@ -254,18 +258,8 @@ func TestCoverHTML() error {
 	return sh.Run(goexe, "tool", "cover", "-html="+coverAll)
 }
 
-// Verify that vendored packages match git HEAD
-func CheckVendor() error {
-	if err := sh.Run("git", "diff-index", "--quiet", "HEAD", "vendor/"); err != nil {
-		// yes, ignore errors from this, not much we can do.
-		sh.Exec(nil, os.Stdout, os.Stderr, "git", "diff", "vendor/")
-		return errors.New("check-vendor target failed: vendored packages out of sync")
-	}
-	return nil
-}
-
 func isGoLatest() bool {
-	return strings.Contains(runtime.Version(), "1.10")
+	return strings.Contains(runtime.Version(), "1.11")
 }
 
 func buildTags() string {

@@ -28,6 +28,8 @@ import (
 	"github.com/gohugoio/hugo/output"
 	"github.com/gohugoio/hugo/tpl"
 
+	"github.com/gohugoio/hugo/common/collections"
+	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/common/loggers"
 
 	jww "github.com/spf13/jwalterweatherman"
@@ -48,9 +50,8 @@ var (
 	_ Cloner                  = (*genericResource)(nil)
 	_ ResourcesLanguageMerger = (*Resources)(nil)
 	_ permalinker             = (*genericResource)(nil)
+	_ collections.Slicer      = (*genericResource)(nil)
 )
-
-const DefaultResourceType = "unknown"
 
 var noData = make(map[string]interface{})
 
@@ -109,6 +110,8 @@ type Resource interface {
 	Params() map[string]interface{}
 }
 
+// ResourcesLanguageMerger describes an interface for merging resources from a
+// different language.
 type ResourcesLanguageMerger interface {
 	MergeByLanguage(other Resources) Resources
 	// Needed for integration with the tpl package.
@@ -135,20 +138,26 @@ type ContentResource interface {
 	Content() (interface{}, error)
 }
 
-// OpenReadSeekeCloser allows setting some other way (than reading from a filesystem)
+// OpenReadSeekCloser allows setting some other way (than reading from a filesystem)
 // to open or create a ReadSeekCloser.
-type OpenReadSeekCloser func() (ReadSeekCloser, error)
+type OpenReadSeekCloser func() (hugio.ReadSeekCloser, error)
 
 // ReadSeekCloserResource is a Resource that supports loading its content.
 type ReadSeekCloserResource interface {
 	Resource
-	ReadSeekCloser() (ReadSeekCloser, error)
+	ReadSeekCloser() (hugio.ReadSeekCloser, error)
 }
 
 // Resources represents a slice of resources, which can be a mix of different types.
 // I.e. both pages and images etc.
 type Resources []Resource
 
+// ResourcesConverter converts a given slice of Resource objects to Resources.
+type ResourcesConverter interface {
+	ToResources() Resources
+}
+
+// ByType returns resources of a given resource type (ie. "image").
 func (r Resources) ByType(tp string) Resources {
 	var filtered Resources
 
@@ -229,19 +238,19 @@ func getGlob(pattern string) (glob.Glob, error) {
 }
 
 // MergeByLanguage adds missing translations in r1 from r2.
-func (r1 Resources) MergeByLanguage(r2 Resources) Resources {
-	result := append(Resources(nil), r1...)
+func (r Resources) MergeByLanguage(r2 Resources) Resources {
+	result := append(Resources(nil), r...)
 	m := make(map[string]bool)
-	for _, r := range r1 {
-		if translated, ok := r.(translatedResource); ok {
+	for _, rr := range r {
+		if translated, ok := rr.(translatedResource); ok {
 			m[translated.TranslationKey()] = true
 		}
 	}
 
-	for _, r := range r2 {
-		if translated, ok := r.(translatedResource); ok {
+	for _, rr := range r2 {
+		if translated, ok := rr.(translatedResource); ok {
 			if _, found := m[translated.TranslationKey()]; !found {
-				result = append(result, r)
+				result = append(result, rr)
 			}
 		}
 	}
@@ -250,12 +259,12 @@ func (r1 Resources) MergeByLanguage(r2 Resources) Resources {
 
 // MergeByLanguageInterface is the generic version of MergeByLanguage. It
 // is here just so it can be called from the tpl package.
-func (r1 Resources) MergeByLanguageInterface(in interface{}) (interface{}, error) {
+func (r Resources) MergeByLanguageInterface(in interface{}) (interface{}, error) {
 	r2, ok := in.(Resources)
 	if !ok {
 		return nil, fmt.Errorf("%T cannot be merged by language", in)
 	}
-	return r1.MergeByLanguage(r2), nil
+	return r.MergeByLanguage(r2), nil
 }
 
 type Spec struct {
@@ -548,6 +557,7 @@ func (l *publishOnce) publish(s Source) error {
 
 // genericResource represents a generic linkable resource.
 type genericResource struct {
+	commonResource
 	resourcePathDescriptor
 
 	title  string
@@ -584,6 +594,9 @@ type genericResource struct {
 	*publishOnce
 }
 
+type commonResource struct {
+}
+
 func (l *genericResource) Data() interface{} {
 	return noData
 }
@@ -596,7 +609,7 @@ func (l *genericResource) Content() (interface{}, error) {
 	return l.content, nil
 }
 
-func (l *genericResource) ReadSeekCloser() (ReadSeekCloser, error) {
+func (l *genericResource) ReadSeekCloser() (hugio.ReadSeekCloser, error) {
 	if l.openReadSeekerCloser != nil {
 		return l.openReadSeekerCloser()
 	}
@@ -619,11 +632,32 @@ func (l genericResource) WithNewBase(base string) Resource {
 	return &l
 }
 
+// Slice is not meant to be used externally. It's a bridge function
+// for the template functions. See collections.Slice.
+func (commonResource) Slice(in interface{}) (interface{}, error) {
+	switch items := in.(type) {
+	case Resources:
+		return items, nil
+	case []interface{}:
+		groups := make(Resources, len(items))
+		for i, v := range items {
+			g, ok := v.(Resource)
+			if !ok {
+				return nil, fmt.Errorf("type %T is not a Resource", v)
+			}
+			groups[i] = g
+		}
+		return groups, nil
+	default:
+		return nil, fmt.Errorf("invalid slice type %T", items)
+	}
+}
+
 func (l *genericResource) initHash() error {
 	var err error
 	l.hashInit.Do(func() {
 		var hash string
-		var f ReadSeekCloser
+		var f hugio.ReadSeekCloser
 		f, err = l.ReadSeekCloser()
 		if err != nil {
 			err = fmt.Errorf("failed to open source file: %s", err)
@@ -645,7 +679,7 @@ func (l *genericResource) initHash() error {
 func (l *genericResource) initContent() error {
 	var err error
 	l.contentInit.Do(func() {
-		var r ReadSeekCloser
+		var r hugio.ReadSeekCloser
 		r, err = l.ReadSeekCloser()
 		if err != nil {
 			return

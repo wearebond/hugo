@@ -51,6 +51,8 @@ type FilePather interface {
 	BaseDir() string
 }
 
+// LanguageDirsMerger implements the afero.DirsMerger interface, which is used
+// to merge two directories.
 var LanguageDirsMerger = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error) {
 	m := make(map[string]*LanguageFileInfo)
 
@@ -84,6 +86,8 @@ var LanguageDirsMerger = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error) {
 	return merged, nil
 }
 
+// LanguageFileInfo is a super-set of os.FileInfo with additional information
+// about the file in relation to its Hugo language.
 type LanguageFileInfo struct {
 	os.FileInfo
 	lang                string
@@ -99,34 +103,41 @@ type LanguageFileInfo struct {
 	weight int
 }
 
+// Filename returns a file's real filename including the base (ie.
+// "/my/base/sect/page.md").
 func (fi *LanguageFileInfo) Filename() string {
 	return fi.realFilename
 }
 
+// Path returns a file's filename relative to the base (ie. "sect/page.md").
 func (fi *LanguageFileInfo) Path() string {
 	return fi.relFilename
 }
 
+// RealName returns a file's real base name (ie. "page.md").
 func (fi *LanguageFileInfo) RealName() string {
 	return fi.realName
 }
 
+// BaseDir returns a file's base directory (ie. "/my/base").
 func (fi *LanguageFileInfo) BaseDir() string {
 	return fi.baseDir
 }
 
+// Lang returns a file's language (ie. "sv").
 func (fi *LanguageFileInfo) Lang() string {
 	return fi.lang
 }
 
 // TranslationBaseName returns the base filename without any extension or language
-// identificator.
+// identifiers (ie. "page").
 func (fi *LanguageFileInfo) TranslationBaseName() string {
 	return fi.translationBaseName
 }
 
 // Name is the name of the file within this filesystem without any path info.
-// It will be marked with language information so we can identify it as ours.
+// It will be marked with language information so we can identify it as ours
+// (ie. "__hugofs_sv_page.md").
 func (fi *LanguageFileInfo) Name() string {
 	return fi.name
 }
@@ -157,6 +168,7 @@ func (l *languageFile) Readdir(c int) (ofi []os.FileInfo, err error) {
 	return fis, err
 }
 
+// LanguageFs represents a language filesystem.
 type LanguageFs struct {
 	// This Fs is usually created with a BasePathFs
 	basePath   string
@@ -166,6 +178,7 @@ type LanguageFs struct {
 	afero.Fs
 }
 
+// NewLanguageFs creates a new language filesystem.
 func NewLanguageFs(lang string, languages map[string]bool, fs afero.Fs) *LanguageFs {
 	if lang == "" {
 		panic("no lang set for the language fs")
@@ -181,10 +194,12 @@ func NewLanguageFs(lang string, languages map[string]bool, fs afero.Fs) *Languag
 	return &LanguageFs{lang: lang, languages: languages, basePath: basePath, Fs: fs, nameMarker: marker}
 }
 
+// Lang returns a language filesystem's language (ie. "sv").
 func (fs *LanguageFs) Lang() string {
 	return fs.lang
 }
 
+// Stat returns the os.FileInfo of a given file.
 func (fs *LanguageFs) Stat(name string) (os.FileInfo, error) {
 	name, err := fs.realName(name)
 	if err != nil {
@@ -199,6 +214,7 @@ func (fs *LanguageFs) Stat(name string) (os.FileInfo, error) {
 	return fs.newLanguageFileInfo(name, fi)
 }
 
+// Open opens the named file for reading.
 func (fs *LanguageFs) Open(name string) (afero.File, error) {
 	name, err := fs.realName(name)
 	if err != nil {
@@ -212,6 +228,9 @@ func (fs *LanguageFs) Open(name string) (afero.File, error) {
 	return &languageFile{File: f, fs: fs}, nil
 }
 
+// LstatIfPossible returns the os.FileInfo structure describing a given file.
+// It attempts to use Lstat if supported or defers to the os.  In addition to
+// the FileInfo, a boolean is returned telling whether Lstat was called.
 func (fs *LanguageFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 	name, err := fs.realName(name)
 	if err != nil {

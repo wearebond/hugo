@@ -35,7 +35,7 @@ The above will create a new content file in `content/posts/my-first-post.md` usi
 3. `themes/my-theme/archetypes/posts.md`
 4. `themes/my-theme/archetypes/default.md`
 
-The last two list items is only applicable if you use a theme and it uses the `my-theme` theme name as an example.
+The last two list items are only applicable if you use a theme and it uses the `my-theme` theme name as an example.
 
 ## Create a New Archetype Template
 
@@ -68,6 +68,28 @@ It will create a new newsletter type of content file based on the archetype temp
 **Note:** the site will only be built if the `.Site` is in use in the archetype file, and this can be time consuming for big sites.
 
 The above _newsletter type archetype_ illustrates the possibilities: The full Hugo `.Site` and all of Hugo&#39;s template funcs can be used in the archetype file.
+
+
+## Directory based archetypes
+
+Since Hugo `0.49` you can use complete directories as archetype templates. Given this archetype directory:
+
+```bash
+archetypes
+├── default.md
+└── post-bundle
+    ├── bio.md
+    ├── images
+    │   └── featured.jpg
+    └── index.md
+```
+
+```bash
+hugo new --kind post-bundle post/my-post
+```
+
+Will create a new folder in `/content/post/my-post` with the same set of files as in the `post-bundle` archetypes folder. All content files (`index.md` etc.) can contain template logic, and will receive the correct `.Site` for the content's language.
+
 
 
 [archetypes directory]: /getting-started/directory-structure/

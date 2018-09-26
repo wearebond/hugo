@@ -218,6 +218,12 @@ func TestRealDirs(t *testing.T) {
 
 	checkFileCount(bfs.Resources.Fs, "", assert, 3)
 
+	assert.NotNil(bfs.themeFs)
+	fi, b, err := bfs.themeFs.(afero.Lstater).LstatIfPossible(filepath.Join("resources", "t1.txt"))
+	assert.NoError(err)
+	assert.False(b)
+	assert.Equal("t1.txt", fi.Name())
+
 }
 
 func TestStaticFs(t *testing.T) {
@@ -239,6 +245,7 @@ func TestStaticFs(t *testing.T) {
 	p, err := paths.New(fs, v)
 	assert.NoError(err)
 	bfs, err := NewBase(p)
+	assert.NoError(err)
 	sfs := bfs.StaticFs("en")
 	checkFileContent(sfs, "f1.txt", assert, "Hugo Rocks!")
 	checkFileContent(sfs, "f2.txt", assert, "Hugo Themes Still Rocks!")
@@ -281,6 +288,7 @@ func TestStaticFsMultiHost(t *testing.T) {
 	p, err := paths.New(fs, v)
 	assert.NoError(err)
 	bfs, err := NewBase(p)
+	assert.NoError(err)
 	enFs := bfs.StaticFs("en")
 	checkFileContent(enFs, "f1.txt", assert, "Hugo Rocks!")
 	checkFileContent(enFs, "f2.txt", assert, "Hugo Themes Still Rocks!")

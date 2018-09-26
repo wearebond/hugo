@@ -74,6 +74,35 @@ func (filepathBridge) Separator() string {
 
 var fpb filepathBridge
 
+// segmentReplacer replaces some URI-reserved characters in a path segments.
+var segmentReplacer = strings.NewReplacer("/", "-", "#", "-")
+
+// MakeSegment returns a copy of string s that is appropriate for a path
+// segment.  MakeSegment is similar to MakePath but disallows the '/' and
+// '#' characters because of their reserved meaning in URIs.
+func (p *PathSpec) MakeSegment(s string) string {
+	s = p.MakePathSanitized(strings.Trim(segmentReplacer.Replace(s), "- "))
+
+	var pos int
+	var last byte
+	b := make([]byte, len(s))
+
+	for i := 0; i < len(s); i++ {
+		// consolidate dashes
+		if s[i] == '-' && last == '-' {
+			continue
+		}
+
+		b[pos], last = s[i], s[i]
+		pos++
+	}
+
+	if p.DisablePathToLower {
+		return string(b[:pos])
+	}
+	return strings.ToLower(string(b[:pos]))
+}
+
 // MakePath takes a string with any characters and replace it
 // so the string could be used in a path.
 // It does so by creating a Unicode-sanitized string, with the spaces replaced,
@@ -516,7 +545,7 @@ func WriteToDisk(inpath string, r io.Reader, fs afero.Fs) (err error) {
 	return afero.WriteReader(fs, inpath, r)
 }
 
-// OpenFileForWriting opens all the given filenames for writing.
+// OpenFilesForWriting opens all the given filenames for writing.
 func OpenFilesForWriting(fs afero.Fs, filenames ...string) (io.WriteCloser, error) {
 	var writeClosers []io.WriteCloser
 	for _, filename := range filenames {
@@ -544,7 +573,7 @@ func OpenFileForWriting(fs afero.Fs, filename string) (afero.File, error) {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
-		if err = fs.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+		if err = fs.MkdirAll(filepath.Dir(filename), 0777); err != nil { // rwx, rw, r before umask
 			return nil, err
 		}
 		f, err = fs.Create(filename)

@@ -1,4 +1,4 @@
-// Copyright 2017 The Hugo Authors. All rights reserved.
+// Copyright 2018 The Hugo Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gohugoio/hugo/common/collections"
 	"github.com/gohugoio/hugo/common/maps"
 	"github.com/gohugoio/hugo/common/types"
 	"github.com/gohugoio/hugo/deps"
@@ -214,8 +215,8 @@ func (ns *Namespace) First(limit interface{}, seq interface{}) (interface{}, err
 		return nil, err
 	}
 
-	if limitv < 1 {
-		return nil, errors.New("can't return negative/empty count of items from sequence")
+	if limitv < 0 {
+		return nil, errors.New("can't return negative count of items from sequence")
 	}
 
 	seqv := reflect.ValueOf(seq)
@@ -297,8 +298,16 @@ func (ns *Namespace) Intersect(l1, l2 interface{}) (interface{}, error) {
 		case reflect.Array, reflect.Slice:
 			for i := 0; i < l1v.Len(); i++ {
 				l1vv := l1v.Index(i)
+				if !l1vv.Type().Comparable() {
+					return make([]interface{}, 0), errors.New("intersect does not support slices or arrays of uncomparable types")
+				}
+
 				for j := 0; j < l2v.Len(); j++ {
 					l2vv := l2v.Index(j)
+					if !l2vv.Type().Comparable() {
+						return make([]interface{}, 0), errors.New("intersect does not support slices or arrays of uncomparable types")
+					}
+
 					ins.handleValuePair(l1vv, l2vv)
 				}
 			}
@@ -309,6 +318,22 @@ func (ns *Namespace) Intersect(l1, l2 interface{}) (interface{}, error) {
 	default:
 		return nil, errors.New("can't iterate over " + reflect.ValueOf(l1).Type().String())
 	}
+}
+
+// Group groups a set of elements by the given key.
+// This is currently only supported for Pages.
+func (ns *Namespace) Group(key interface{}, items interface{}) (interface{}, error) {
+	if key == nil {
+		return nil, errors.New("nil is not a valid key to group by")
+	}
+
+	in := newSliceElement(items)
+
+	if g, ok := in.(collections.Grouper); ok {
+		return g.Group(key, items)
+	}
+
+	return nil, fmt.Errorf("grouping not supported for type %T", items)
 }
 
 // IsSet returns whether a given array, channel, slice, or map has a key
@@ -489,7 +514,40 @@ func (ns *Namespace) Shuffle(seq interface{}) (interface{}, error) {
 }
 
 // Slice returns a slice of all passed arguments.
-func (ns *Namespace) Slice(args ...interface{}) []interface{} {
+func (ns *Namespace) Slice(args ...interface{}) interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	first := args[0]
+	firstType := reflect.TypeOf(first)
+
+	allTheSame := firstType != nil
+	if allTheSame && len(args) > 1 {
+		// This can be a mix of types.
+		for i := 1; i < len(args); i++ {
+			if firstType != reflect.TypeOf(args[i]) {
+				allTheSame = false
+				break
+			}
+		}
+	}
+
+	if allTheSame {
+		if g, ok := first.(collections.Slicer); ok {
+			v, err := g.Slice(args)
+			if err == nil {
+				return v
+			}
+		} else {
+			slice := reflect.MakeSlice(reflect.SliceOf(firstType), len(args), len(args))
+			for i, arg := range args {
+				slice.Index(i).Set(reflect.ValueOf(arg))
+			}
+			return slice.Interface()
+		}
+	}
+
 	return args
 }
 
@@ -566,6 +624,11 @@ func (ns *Namespace) Union(l1, l2 interface{}) (interface{}, error) {
 
 			for i := 0; i < l1v.Len(); i++ {
 				l1vv, isNil = indirectInterface(l1v.Index(i))
+
+				if !l1vv.Type().Comparable() {
+					return []interface{}{}, errors.New("union does not support slices or arrays of uncomparable types")
+				}
+
 				if !isNil {
 					ins.appendIfNotSeen(l1vv)
 				}

@@ -19,7 +19,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gohugoio/hugo/common/collections"
 	"github.com/gohugoio/hugo/common/errors"
+	"github.com/gohugoio/hugo/common/hugio"
 	"github.com/gohugoio/hugo/helpers"
 	"github.com/mitchellh/hashstructure"
 	"github.com/spf13/afero"
@@ -36,6 +38,7 @@ import (
 var (
 	_ ContentResource        = (*transformedResource)(nil)
 	_ ReadSeekCloserResource = (*transformedResource)(nil)
+	_ collections.Slicer     = (*transformedResource)(nil)
 )
 
 func (s *Spec) Transform(r Resource, t ResourceTransformation) (Resource, error) {
@@ -43,7 +46,7 @@ func (s *Spec) Transform(r Resource, t ResourceTransformation) (Resource, error)
 		Resource:                    r,
 		transformation:              t,
 		transformedResourceMetadata: transformedResourceMetadata{MetaData: make(map[string]interface{})},
-		cache: s.ResourceCache}, nil
+		cache:                       s.ResourceCache}, nil
 }
 
 type ResourceTransformationCtx struct {
@@ -165,6 +168,8 @@ type transformedResourceMetadata struct {
 }
 
 type transformedResource struct {
+	commonResource
+
 	cache *ResourceCache
 
 	// This is the filename inside resources/_gen/assets
@@ -188,11 +193,11 @@ type transformedResource struct {
 	Resource
 }
 
-func (r *transformedResource) ReadSeekCloser() (ReadSeekCloser, error) {
+func (r *transformedResource) ReadSeekCloser() (hugio.ReadSeekCloser, error) {
 	if err := r.initContent(); err != nil {
 		return nil, err
 	}
-	return NewReadSeekerNoOpCloserFromString(r.content), nil
+	return hugio.NewReadSeekerNoOpCloserFromString(r.content), nil
 }
 
 func (r *transformedResource) transferTransformedValues(another *transformedResource) {
@@ -337,7 +342,7 @@ func (r *transformedResource) transform(setContent bool) (err error) {
 	defer bp.PutBuffer(b2)
 
 	tctx := &ResourceTransformationCtx{
-		Data: r.transformedResourceMetadata.MetaData,
+		Data:                  r.transformedResourceMetadata.MetaData,
 		OpenResourcePublisher: openPublishFileForWriting,
 	}
 
@@ -385,13 +390,17 @@ func (r *transformedResource) transform(setContent bool) (err error) {
 		}
 
 		if err := tr.transformation.Transform(tctx); err != nil {
-			if err == errors.FeatureNotAvailableErr {
+			if err == errors.ErrFeatureNotAvailable {
 				// This transformation is not available in this
 				// Hugo installation (scss not compiled in, PostCSS not available etc.)
 				// If a prepared bundle for this transformation chain is available, use that.
 				f := r.tryTransformedFileCache(key)
 				if f == nil {
-					return fmt.Errorf("%s: failed to transform %q (%s): %s", strings.ToUpper(tr.transformation.Key().name), tctx.InPath, tctx.InMediaType.Type(), err)
+					errMsg := err.Error()
+					if tr.transformation.Key().name == "postcss" {
+						errMsg = "PostCSS not found; install with \"npm install postcss-cli\". See https://gohugo.io/hugo-pipes/postcss/"
+					}
+					return fmt.Errorf("%s: failed to transform %q (%s): %s", strings.ToUpper(tr.transformation.Key().name), tctx.InPath, tctx.InMediaType.Type(), errMsg)
 				}
 				transformedContentr = f
 				defer f.Close()
@@ -474,7 +483,7 @@ func (r *transformedResource) initTransform(setContent bool) error {
 }
 
 // contentReadSeekerCloser returns a ReadSeekerCloser if possible for a given Resource.
-func contentReadSeekerCloser(r Resource) (ReadSeekCloser, error) {
+func contentReadSeekerCloser(r Resource) (hugio.ReadSeekCloser, error) {
 	switch rr := r.(type) {
 	case ReadSeekCloserResource:
 		rc, err := rr.ReadSeekCloser()

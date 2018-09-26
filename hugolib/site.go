@@ -488,9 +488,9 @@ func newSiteRefLinker(cfg config.Provider, s *Site) (siteRefLinker, error) {
 
 func (s siteRefLinker) logNotFound(ref, what string, p *Page) {
 	if p != nil {
-		s.errorLogger.Printf("REF_NOT_FOUND: Ref %q: %s", ref, what)
+		s.errorLogger.Printf("[%s] REF_NOT_FOUND: Ref %q: %s", s.s.Lang(), ref, what)
 	} else {
-		s.errorLogger.Printf("REF_NOT_FOUND: Ref %q from page %q: %s", ref, p.absoluteSourceRef(), what)
+		s.errorLogger.Printf("[%s] REF_NOT_FOUND: Ref %q from page %q: %s", s.s.Lang(), ref, p.absoluteSourceRef(), what)
 	}
 
 }
@@ -795,7 +795,7 @@ func (s *Site) processPartial(events []fsnotify.Event) (whatChanged, error) {
 				removed = true
 			}
 		}
-		if removed && isContentFile(ev.Name) {
+		if removed && IsContentFile(ev.Name) {
 			h.removePageByFilename(ev.Name)
 		}
 
@@ -1012,6 +1012,8 @@ func (s *Site) setupSitePages() {
 }
 
 func (s *Site) render(config *BuildCfg, outFormatIdx int) (err error) {
+	// Clear the global page cache.
+	spc.clear()
 
 	if outFormatIdx == 0 {
 		if err = s.preparePages(); err != nil {
@@ -1514,8 +1516,6 @@ func (s *Site) resetBuildState() {
 
 	s.expiredCount = 0
 
-	spc = newPageCache()
-
 	for _, p := range s.rawAllPages {
 		p.subSections = Pages{}
 		p.parent = nil
@@ -1830,11 +1830,7 @@ func (s *Site) newTaxonomyPage(plural, key string) *Page {
 	p := s.newNodePage(KindTaxonomy, plural, key)
 
 	if s.Info.preserveTaxonomyNames {
-		// Keep (mostly) as is in the title
-		// We make the first character upper case, mostly because
-		// it is easier to reason about in the tests.
-		p.title = helpers.FirstUpper(key)
-		key = s.PathSpec.MakePathSanitized(key)
+		p.title = key
 	} else {
 		p.title = strings.Replace(s.titleFunc(key), "-", " ", -1)
 	}

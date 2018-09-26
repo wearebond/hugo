@@ -1,4 +1,4 @@
-// Copyright 2017-present The Hugo Authors. All rights reserved.
+// Copyright 2018 The Hugo Authors. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ func (k KeyValues) String() string {
 	return fmt.Sprintf("%v: %v", k.Key, k.Values)
 }
 
+// NewKeyValuesStrings takes a given key and slice of values and returns a new
+// KeyValues struct.
 func NewKeyValuesStrings(key string, values ...string) KeyValues {
 	iv := make([]interface{}, len(values))
 	for i := 0; i < len(values); i++ {
